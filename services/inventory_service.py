@@ -30,7 +30,7 @@ def create_access_token(data: dict, expires_minutes: int = 60) -> str: # JWT cre
     return encoded_jwt # token return
 
 async def retrieve_book_data(db: AsyncSession, book_id: str):
-    """Register a new user in the database."""
+    """Retrieve a book's data"""
     existence_check = await db.execute(select(Book).where(Book.id == UUID(book_id))) # SELECT * FROM Book WHERE id =: book_id
     book = existence_check.scalar_one_or_none() # Check if a Book with this id exists and return None
     
