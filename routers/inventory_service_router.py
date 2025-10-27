@@ -55,7 +55,44 @@ async def check_book_status_router (
             "stock": book.stock,
             "metadata": book.book_metadata}}
     )
+
+
+@router.get("/check-book-coms/{book_id}", status_code = status.HTTP_200_OK, include_in_schema=True) 
+@limiter.limit("10000/minute")
+async def check_book_status_router (
+    book_id: str,
+    request: Request,
+    x_internal_action_token: str,
+    db: AsyncSession = Depends(get_session) # Async session for bd
+    ):
+    """Endpoint to retrieve the whole catalog inventory."""
+    x_internal_action_token = x_internal_action_token.replace("Bearer", "").strip()
+    await validate_internal_action_token(x_internal_action_token)
     
+    book = await retrieve_book_data(db, book_id)
+    
+
+    if not book:
+        return JSONResponse(
+            status_code = status.HTTP_404_NOT_FOUND,
+            content={"detail":"Book not found."}
+        )
+        
+    return JSONResponse(
+        status_code = status.HTTP_200_OK,
+        content={
+            "book": {
+            "id": str(book.id),
+            "book_name": book.book_name,
+            "author": book.author,
+            "price": book.price,
+            "publication_date": utc_return_time_cast(book.publication_date),
+            "book_type": book.book_type,
+            "stock": book.stock,
+            "metadata": book.book_metadata}}
+    )
+
+
 @router.post("/update-book/{book_id}", status_code = status.HTTP_200_OK, include_in_schema=True) 
 @limiter.limit("10/minute")
 async def restock_book_router (
