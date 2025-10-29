@@ -12,6 +12,7 @@ from uuid import UUID , uuid4 # UUID for tables ids
 from datetime import datetime, timedelta, timezone # Time management
 import random 
 from utils.time import utc_now, utc_return_time_cast # Router functions for lesser verbouse text
+from sqlalchemy.orm.attributes import flag_modified
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"]) # All endpoints will start with /catalog and tagged as Catalogs
 
@@ -65,7 +66,7 @@ async def check_book_status_router (
     x_internal_action_token: str,
     db: AsyncSession = Depends(get_session) # Async session for bd
     ):
-    """Endpoint to retrieve the whole catalog inventory."""
+    """Endpoint to check the existence of a book within the infranet."""
     x_internal_action_token = x_internal_action_token.replace("Bearer", "").strip()
     await validate_internal_action_token(x_internal_action_token)
     
@@ -92,6 +93,48 @@ async def check_book_status_router (
             "metadata": book.book_metadata}}
     )
 
+
+@router.patch("/reduce", status_code = status.HTTP_200_OK, include_in_schema=True) 
+@limiter.limit("10000/minute")
+async def reduce_book_amount (
+    books: dict,
+    request: Request,
+    x_internal_action_token: str,
+    db: AsyncSession = Depends(get_session) # Async session for bd
+    ):
+    """Endpoint to reduce inventory"""
+    x_internal_action_token = x_internal_action_token.replace("Bearer", "").strip()
+    await validate_internal_action_token(x_internal_action_token)
+    errors = []
+    books = books.get("books", {})
+    
+    for book_id, amount in books.items():
+        print(f"Processing book ID: {book_id} with amount: {amount}")
+        book = await retrieve_book_data(db, str(book_id))
+        if not book:
+            errors.append(f"Book with ID {book_id} not found.")
+            break
+        if book.stock - amount < 0:
+            errors.append(f"Insufficient stock for book ID {book_id}.")
+            break
+        book.stock -= amount
+        book.book_metadata["stock"] -= amount
+        flag_modified(book, "book_metadata")
+        
+    if not errors:
+        await db.commit()
+    else:
+        await db.rollback()
+        return JSONResponse(
+            status_code = status.HTTP_400_BAD_REQUEST,
+            content={"detail":"Errors occurred during inventory update.", "errors": errors}
+        )
+    
+
+    return JSONResponse(
+        status_code = status.HTTP_200_OK,
+        content={"detail":"Inventory updated successfully.", "errors": errors}
+    )
 
 @router.post("/update-book/{book_id}", status_code = status.HTTP_200_OK, include_in_schema=True) 
 @limiter.limit("10/minute")
